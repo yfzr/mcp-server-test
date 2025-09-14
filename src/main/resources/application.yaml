@@ -1,0 +1,23 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: mcp-server-test
+  ai:
+    mcp:
+      server:
+        name: my-mcp-server
+        version: 0.0.1
+#    chat:
+#      client:
+#        enabled: false
+#      observations:
+#        include-prompt: true
+#    deepseek:
+#      api-key: sk-20b586ffe1ab4ca1a23fa9f457f7d90a
+#      chat:
+#        options:
+#          model: deepseek-chat
+#      base-url: https://api.deepseek.com
+#      embedding:
+#        enabled: false
