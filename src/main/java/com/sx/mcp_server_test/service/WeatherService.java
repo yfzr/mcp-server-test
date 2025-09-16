@@ -17,16 +17,24 @@ package com.sx.mcp_server_test.service;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.modelcontextprotocol.server.McpSyncServerExchange;
+import io.modelcontextprotocol.spec.McpSchema;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class WeatherService {
+
+    private static final Logger logger = LoggerFactory.getLogger(WeatherService.class);
 
 	private final RestClient restClient;
 
@@ -46,7 +54,7 @@ public class WeatherService {
 		}
 	} // @formatter:on
 
-	@Tool(description = "Get the temperature (in celsius) for a specific location") // @formatter:off
+//	@Tool(description = "Get the temperature (in celsius) for a specific location") // @formatter:off
 	public WeatherResponse weatherForecast( 
 		@ToolParam(description = "The location latitude") double latitude,
 		@ToolParam(description = "The location longitude") double longitude,
@@ -61,4 +69,64 @@ public class WeatherService {
 
 		return weatherResponse;
 	}
+
+    @Tool(description = "Get the temperature (in celsius) for a specific location")
+    public String getTemperature(McpSyncServerExchange exchange,
+                                  @ToolParam(description = "The location latitude") double latitude,
+                                  @ToolParam(description = "The location longitude") double longitude) {
+
+        WeatherResponse weatherResponse = restClient
+                .get()
+                .uri("https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current=temperature_2m",
+                        latitude, longitude)
+                .retrieve()
+                .body(WeatherResponse.class);
+
+        StringBuilder deepseekWeatherPoem = new StringBuilder();
+        StringBuilder zhipuWeatherPoem = new StringBuilder();
+
+        exchange.loggingNotification(McpSchema.LoggingMessageNotification.builder()
+                .level(McpSchema.LoggingLevel.INFO)
+                .data("Start sampling")
+                .build());
+
+        if (exchange.getClientCapabilities().sampling() != null) {
+            var messageRequestBuilder = McpSchema.CreateMessageRequest.builder()
+                    .systemPrompt("You are a poet!")
+                    .messages(List.of(new McpSchema.SamplingMessage(McpSchema.Role.USER,
+                            new McpSchema.TextContent(
+                                    "Please write a poem about this weather forecast (temperature is in Celsius). Use markdown format :\n "
+                                            + ModelOptionsUtils
+                                            .toJsonStringPrettyPrinter(weatherResponse)))));
+
+            var deepseekLlmMessageRequest = messageRequestBuilder
+                    .modelPreferences(McpSchema.ModelPreferences.builder().addHint("deepseek").build())
+                    .build();
+            McpSchema.CreateMessageResult openAiLlmResponse = exchange.createMessage(deepseekLlmMessageRequest);
+
+            deepseekWeatherPoem.append(((McpSchema.TextContent) openAiLlmResponse.content()).text());
+
+            var zhipuLlmMessageRequest = messageRequestBuilder
+                    .modelPreferences(McpSchema.ModelPreferences.builder().addHint("zhipu").build())
+                    .build();
+            McpSchema.CreateMessageResult anthropicAiLlmResponse = exchange.createMessage(zhipuLlmMessageRequest);
+
+            zhipuWeatherPoem.append(((McpSchema.TextContent) anthropicAiLlmResponse.content()).text());
+
+        }
+
+        exchange.loggingNotification(McpSchema.LoggingMessageNotification.builder()
+                .level(McpSchema.LoggingLevel.INFO)
+                .data("Finish Sampling")
+                .build());
+
+        String responseWithPoems = "Deepseek poem about the weather: " + deepseekWeatherPoem + "\n\n" +
+                "Zhipu poem about the weather: " + zhipuWeatherPoem + "\n"
+                + ModelOptionsUtils.toJsonStringPrettyPrinter(weatherResponse);
+
+        logger.info(zhipuWeatherPoem.toString(), responseWithPoems);
+
+        return responseWithPoems;
+
+    }
 }
