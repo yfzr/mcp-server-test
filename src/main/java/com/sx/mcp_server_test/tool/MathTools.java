@@ -22,7 +22,7 @@ public class MathTools {
 	public MathTools() {
 	}
 
-	@Tool(description = "Adds two numbers")
+	@Tool(name = "sum-numbers", description = "Adds two numbers")
 	public int sumNumbers(int number1, int number2) {
 		return number1 + number2;
 	}
